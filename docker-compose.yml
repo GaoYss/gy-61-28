@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:19080,http://127.0.0.1:19080"
+      SQLITE_PATH: "/data/db.sqlite3"
+    ports:
+      - "18080:8000"
+    volumes:
+      - backend_data:/data
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_PROXY: "http://backend:8000"
+    ports:
+      - "19080:5173"
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:
