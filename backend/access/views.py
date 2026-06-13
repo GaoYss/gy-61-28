@@ -1,6 +1,11 @@
+import csv
+from io import StringIO
+
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import filters, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -58,6 +63,8 @@ class DoorLogViewSet(viewsets.ModelViewSet):
         result = self.request.query_params.get("result")
         opener_type = self.request.query_params.get("opener_type")
         keyword = self.request.query_params.get("keyword")
+        start_time = self.request.query_params.get("start_time")
+        end_time = self.request.query_params.get("end_time")
         if result:
             queryset = queryset.filter(result=result)
         if opener_type:
@@ -68,7 +75,31 @@ class DoorLogViewSet(viewsets.ModelViewSet):
                 | Q(device__name__icontains=keyword)
                 | Q(device__location__icontains=keyword)
             )
+        if start_time:
+            queryset = queryset.filter(opened_at__gte=start_time)
+        if end_time:
+            queryset = queryset.filter(opened_at__lte=end_time)
         return queryset
+
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        queryset = self.get_queryset()
+        buffer = StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["时间", "人员", "类型", "设备", "开门方式", "结果", "说明"])
+        for log in queryset:
+            writer.writerow([
+                timezone.localtime(log.opened_at).strftime("%Y-%m-%d %H:%M:%S"),
+                log.opener_name,
+                log.get_opener_type_display(),
+                log.device.name,
+                log.get_credential_method_display(),
+                log.get_result_display(),
+                log.failure_reason or "-",
+            ])
+        response = HttpResponse(buffer.getvalue(), content_type="text/csv; charset=utf-8-sig")
+        response["Content-Disposition"] = 'attachment; filename="door_logs.csv"'
+        return response
 
 
 class StatsView(APIView):

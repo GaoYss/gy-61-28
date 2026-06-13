@@ -34,4 +34,15 @@ export const accessApi = {
     const query = params.toString();
     return request(`/door-logs/${query ? `?${query}` : ""}`).then(unwrapList);
   },
+  exportDoorLogs: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return fetch(`${API_BASE}/door-logs/export/${query ? `?${query}` : ""}`).then((res) => {
+      if (!res.ok) throw new Error("导出失败");
+      return res.blob();
+    });
+  },
 };

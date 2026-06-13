@@ -418,6 +418,39 @@ dd {
   background: #ffffff;
 }
 
+.filter-bar input[type="date"] {
+  min-height: 42px;
+  border: 1px solid #ccd7e0;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: #536272;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 18px;
+  background: #2f7dd3;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-primary:hover {
+  background: #2569b5;
+}
+
+.btn-primary:disabled {
+  background: #a8c5e6;
+  cursor: not-allowed;
+}
+
 .empty-state,
 .error-panel {
   color: #6b7785;
