@@ -45,10 +45,13 @@ class AlarmViewSet(viewsets.ModelViewSet):
         queryset = AlarmEvent.objects.select_related("device")
         status_value = self.request.query_params.get("status")
         level = self.request.query_params.get("level")
+        alarm_type = self.request.query_params.get("alarm_type")
         if status_value:
             queryset = queryset.filter(status=status_value)
         if level:
             queryset = queryset.filter(level=level)
+        if alarm_type:
+            queryset = queryset.filter(alarm_type=alarm_type)
         return queryset
 
 
@@ -65,6 +68,7 @@ class DoorLogViewSet(viewsets.ModelViewSet):
         keyword = self.request.query_params.get("keyword")
         start_time = self.request.query_params.get("start_time")
         end_time = self.request.query_params.get("end_time")
+        device = self.request.query_params.get("device")
         if result:
             queryset = queryset.filter(result=result)
         if opener_type:
@@ -79,6 +83,8 @@ class DoorLogViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(opened_at__gte=start_time)
         if end_time:
             queryset = queryset.filter(opened_at__lte=end_time)
+        if device:
+            queryset = queryset.filter(device_id=device)
         return queryset
 
     @action(detail=False, methods=["get"])
@@ -109,8 +115,16 @@ class StatsView(APIView):
             {
                 "devices_total": AccessDevice.objects.count(),
                 "devices_online": AccessDevice.objects.filter(status=AccessDevice.Status.ONLINE).count(),
-                "visitors_pending": VisitorPass.objects.filter(pass_status=VisitorPass.PassStatus.PENDING).count(),
+                "visitors_by_status": {
+                    "pending": VisitorPass.objects.filter(pass_status=VisitorPass.PassStatus.PENDING).count(),
+                    "approved": VisitorPass.objects.filter(pass_status=VisitorPass.PassStatus.APPROVED).count(),
+                    "rejected": VisitorPass.objects.filter(pass_status=VisitorPass.PassStatus.REJECTED).count(),
+                    "expired": VisitorPass.objects.filter(pass_status=VisitorPass.PassStatus.EXPIRED).count(),
+                },
                 "open_alarms": AlarmEvent.objects.exclude(status=AlarmEvent.Status.RESOLVED).count(),
+                "alarms_by_type": list(
+                    AlarmEvent.objects.values("alarm_type").annotate(count=Count("id")).order_by("alarm_type")
+                ),
                 "today_success_logs": DoorOpenLog.objects.filter(
                     result=DoorOpenLog.Result.SUCCESS,
                     opened_at__date=today,

@@ -234,6 +234,21 @@ class DoorLogFilterTests(AccessControlTestBase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["opener_name"], "张某某")
 
+    def test_filter_by_device_id(self):
+        response = self.client.get("/api/door-logs/", {"device": self.device_online.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+        device_ids = [log["device"] for log in response.data["results"]]
+        self.assertTrue(all(did == self.device_online.pk for did in device_ids))
+
+    def test_filter_by_device_id_offline(self):
+        response = self.client.get("/api/door-logs/", {"device": self.device_offline.pk})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+        opener_names = [log["opener_name"] for log in response.data["results"]]
+        self.assertIn("未知人员", opener_names)
+        self.assertIn("物业管理员", opener_names)
+
     def test_combined_filters_result_and_opener_type(self):
         response = self.client.get(
             "/api/door-logs/",
@@ -267,6 +282,41 @@ class DoorLogFilterTests(AccessControlTestBase):
         self.assertIn("时间,人员,类型,设备,开门方式,结果,说明", content)
         self.assertIn("李明", content)
         self.assertIn("陈先生", content)
+
+    def test_export_csv_with_device_filter(self):
+        response = self.client.get(
+            "/api/door-logs/export/",
+            {"device": self.device_online.pk},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("李明", content)
+        self.assertIn("陈先生", content)
+        self.assertNotIn("未知人员", content)
+        self.assertNotIn("物业管理员", content)
+
+    def test_export_csv_with_result_filter(self):
+        response = self.client.get(
+            "/api/door-logs/export/",
+            {"result": "denied"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode("utf-8-sig")
+        self.assertIn("未知人员", content)
+        self.assertNotIn("李明", content)
+        self.assertNotIn("陈先生", content)
+
+    def test_nonexistent_filter_value_returns_empty(self):
+        response = self.client.get("/api/door-logs/", {"result": "nonexistent"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_nonexistent_device_id_returns_empty(self):
+        response = self.client.get("/api/door-logs/", {"device": 99999})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
 
 
 class AlarmStatusFilterTests(AccessControlTestBase):
@@ -309,6 +359,30 @@ class AlarmStatusFilterTests(AccessControlTestBase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["alarm_type"], "blacklist")
 
+    def test_filter_by_alarm_type_tailgating(self):
+        response = self.client.get("/api/alarms/", {"alarm_type": "tailgating"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["title"], "车库疑似尾随通行")
+
+    def test_filter_by_alarm_type_device_offline(self):
+        response = self.client.get("/api/alarms/", {"alarm_type": "device_offline"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["title"], "北门设备维护超时")
+
+    def test_filter_by_alarm_type_forced_open(self):
+        response = self.client.get("/api/alarms/", {"alarm_type": "forced_open"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["alarm_type"], "forced_open")
+
+    def test_filter_by_alarm_type_blacklist(self):
+        response = self.client.get("/api/alarms/", {"alarm_type": "blacklist"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["alarm_type"], "blacklist")
+
     def test_combined_status_and_level_filters(self):
         response = self.client.get(
             "/api/alarms/",
@@ -318,10 +392,36 @@ class AlarmStatusFilterTests(AccessControlTestBase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["title"], "车库疑似尾随通行")
 
+    def test_combined_alarm_type_and_status_filters(self):
+        response = self.client.get(
+            "/api/alarms/",
+            {"alarm_type": "tailgating", "status": "open"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+
     def test_no_filters_returns_all_alarms(self):
         response = self.client.get("/api/alarms/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 4)
+
+    def test_nonexistent_status_returns_empty(self):
+        response = self.client.get("/api/alarms/", {"status": "nonexistent"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_nonexistent_alarm_type_returns_empty(self):
+        response = self.client.get("/api/alarms/", {"alarm_type": "nonexistent"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_nonexistent_level_returns_empty(self):
+        response = self.client.get("/api/alarms/", {"level": "nonexistent"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
 
 
 class DeviceOnlineStatsTests(AccessControlTestBase):
@@ -383,29 +483,16 @@ class VisitorStatusFilterTests(AccessControlTestBase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["results"][0]["pass_status"], "expired")
 
-    def test_stats_visitors_pending(self):
-        response = self.client.get("/api/stats/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["visitors_pending"], 1)
-
-    def test_stats_visitors_pending_after_approve(self):
-        self.visitor_pending.pass_status = VisitorPass.PassStatus.APPROVED
-        self.visitor_pending.save()
-        response = self.client.get("/api/stats/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["visitors_pending"], 0)
-
-    def test_stats_visitors_pending_after_reject(self):
-        self.visitor_pending.pass_status = VisitorPass.PassStatus.REJECTED
-        self.visitor_pending.save()
-        response = self.client.get("/api/stats/")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["visitors_pending"], 0)
-
     def test_no_filter_returns_all_visitors(self):
         response = self.client.get("/api/visitors/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 4)
+
+    def test_nonexistent_status_returns_empty(self):
+        response = self.client.get("/api/visitors/", {"status": "nonexistent"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
 
 
 class StatsViewTests(AccessControlTestBase):
@@ -442,14 +529,52 @@ class StatsViewTests(AccessControlTestBase):
         self.assertEqual(counts["remote"], 1)
         self.assertEqual(counts["card"], 1)
 
+    def test_stats_alarms_by_type(self):
+        response = self.client.get("/api/stats/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        alarms_by_type = response.data["alarms_by_type"]
+        self.assertIsInstance(alarms_by_type, list)
+        type_counts = {item["alarm_type"]: item["count"] for item in alarms_by_type}
+        self.assertEqual(type_counts["tailgating"], 1)
+        self.assertEqual(type_counts["device_offline"], 1)
+        self.assertEqual(type_counts["forced_open"], 1)
+        self.assertEqual(type_counts["blacklist"], 1)
+
+    def test_stats_visitors_by_status(self):
+        response = self.client.get("/api/stats/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        visitors_by_status = response.data["visitors_by_status"]
+        self.assertIsInstance(visitors_by_status, dict)
+        self.assertEqual(visitors_by_status["pending"], 1)
+        self.assertEqual(visitors_by_status["approved"], 1)
+        self.assertEqual(visitors_by_status["rejected"], 1)
+        self.assertEqual(visitors_by_status["expired"], 1)
+
+    def test_stats_visitors_by_status_after_approve(self):
+        self.visitor_pending.pass_status = VisitorPass.PassStatus.APPROVED
+        self.visitor_pending.save()
+        response = self.client.get("/api/stats/")
+        visitors_by_status = response.data["visitors_by_status"]
+        self.assertEqual(visitors_by_status["pending"], 0)
+        self.assertEqual(visitors_by_status["approved"], 2)
+
+    def test_stats_visitors_by_status_after_reject(self):
+        self.visitor_pending.pass_status = VisitorPass.PassStatus.REJECTED
+        self.visitor_pending.save()
+        response = self.client.get("/api/stats/")
+        visitors_by_status = response.data["visitors_by_status"]
+        self.assertEqual(visitors_by_status["pending"], 0)
+        self.assertEqual(visitors_by_status["rejected"], 2)
+
     def test_stats_all_fields_present(self):
         response = self.client.get("/api/stats/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         expected_fields = [
             "devices_total",
             "devices_online",
-            "visitors_pending",
+            "visitors_by_status",
             "open_alarms",
+            "alarms_by_type",
             "today_success_logs",
             "logs_by_method",
         ]
